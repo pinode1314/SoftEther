@@ -55,22 +55,18 @@ do_install() {
         return
     fi
 
-    echo "=== 1. 正在更新软件源并安装编译依赖 ==="
-    apt update -y && apt upgrade -y
-    apt install -y build-essential gcc g++ make wget curl zlib1g-dev libssl-dev
-
-    echo "=== 2. 正在下载 SoftEther VPN Server (v4.44-9807-rtm) ==="
+    echo "=== 1. 正在下载 SoftEther VPN Server (v4.44-9807-rtm) ==="
     DOWNLOAD_URL="https://github.com/SoftEtherVPN/SoftEtherVPN_Stable/releases/download/v4.44-9807-rtm/softether-vpnserver-v4.44-9807-rtm-2025.04.16-linux-x64-64bit.tar.gz"
     wget -qO softether-vpnserver.tar.gz "$DOWNLOAD_URL"
 
-    echo "=== 3. 正在解压文件 ==="
+    echo "=== 2. 正在解压文件 ==="
     tar -zxvf softether-vpnserver.tar.gz >/dev/null 2>&1
 
-    echo "=== 4. 正在移动到标准目录 (/usr/local/vpnserver) ==="
+    echo "=== 3. 正在移动到标准目录 (/usr/local/vpnserver) ==="
     mv vpnserver /usr/local/
     rm -f softether-vpnserver.tar.gz
 
-    echo "=== 5. 正在编译 SoftEther VPN ==="
+    echo "=== 4. 正在编译 SoftEther VPN ==="
     cd /usr/local/vpnserver
     # 通过重定向自动同意协议条款（输入 1 三次）
     make <<EOF >/dev/null 2>&1
@@ -79,12 +75,12 @@ do_install() {
 1
 EOF
 
-    echo "=== 6. 正在设置目录权限 ==="
+    echo "=== 5. 正在设置目录权限 ==="
     chmod 600 /usr/local/vpnserver/*
     chmod 755 /usr/local/vpnserver/vpnserver
     chmod 755 /usr/local/vpnserver/vpncmd
 
-    echo "=== 7. 正在创建 systemd 服务 ==="
+    echo "=== 6. 正在创建 systemd 服务 ==="
     cat <<EOF > /etc/systemd/system/vpnserver.service
 [Unit]
 Description=SoftEther VPN Server
@@ -101,7 +97,7 @@ WorkingDirectory=/usr/local/vpnserver
 WantedBy=multi-user.target
 EOF
 
-    echo "=== 8. 正在启动并配置开机自启 ==="
+    echo "=== 7. 正在启动并配置开机自启 ==="
     systemctl daemon-reload
     systemctl start vpnserver
     systemctl enable vpnserver >/dev/null 2>&1
