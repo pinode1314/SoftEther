@@ -27,6 +27,46 @@ check_installed() {
     fi
 }
 
+# 智能检测并安装编译依赖（兼容多系统，已安装则跳过）
+install_dependencies() {
+    echo "--- 正在检查编译依赖 ---"
+    
+    # 检查核心编译工具是否齐全
+    if command -v gcc &> /dev/null && command -v g++ &> /dev/null && command -v make &> /dev/null && command -v wget &> /dev/null; then
+        # 针对不同系统的开发库进行抽样检查
+        if [ -f /etc/debian_version ] && dpkg -s zlib1g-dev libssl-dev &> /dev/null; then
+            echo -e "${GREEN}✅ 检测到所有编译依赖已完整安装，跳过依赖安装步骤。${NC}"
+            return 0
+        elif [ -f /etc/redhat-release ] && rpm -q zlib-devel openssl-devel &> /dev/null; then
+            echo -e "${GREEN}✅ 检测到所有编译依赖已完整安装，跳过依赖安装步骤。${NC}"
+            return 0
+        elif [ -f /etc/alpine-release ] && apk info -e zlib-dev openssl-dev &> /dev/null; then
+            echo -e "${GREEN}✅ 检测到所有编译依赖已完整安装，跳过依赖安装步骤。${NC}"
+            return 0
+        fi
+    fi
+
+    echo "=== 1. 部分依赖缺失，正在安装编译依赖 ==="
+    if [ -f /etc/redhat-release ]; then
+        # CentOS / RHEL / Fedora / Rocky Linux
+        if command -v dnf &> /dev/null; then
+            dnf install -y gcc g++ make wget curl zlib-devel openssl-devel
+        else
+            yum install -y gcc g++ make wget curl zlib-devel openssl-devel
+        fi
+    elif [ -f /etc/debian_version ]; then
+        # Debian / Ubuntu / Armbian
+        apt-get update -y
+        apt-get install -y build-essential gcc g++ make wget curl zlib1g-dev libssl-dev
+    elif [ -f /etc/alpine-release ]; then
+        # Alpine Linux
+        apk update
+        apk add build-base gcc g++ make wget curl zlib-dev openssl-dev
+    else
+        echo -e "${YELLOW}⚠️ 未知的 Linux 发行版，跳过自动安装依赖，请确保已手动安装相关编译工具及开发库。${NC}"
+    fi
+}
+
 # 静默卸载（用于清理）
 do_uninstall_quiet() {
     if systemctl is-active --quiet vpnserver; then
@@ -55,18 +95,21 @@ do_install() {
         return
     fi
 
-    echo "=== 1. 正在下载 SoftEther VPN Server (v4.44-9807-rtm) ==="
+    # 调用智能依赖检测与安装
+    install_dependencies
+
+    echo "=== 2. 正在下载 SoftEther VPN Server (v4.44-9807-rtm) ==="
     DOWNLOAD_URL="https://github.com/SoftEtherVPN/SoftEtherVPN_Stable/releases/download/v4.44-9807-rtm/softether-vpnserver-v4.44-9807-rtm-2025.04.16-linux-x64-64bit.tar.gz"
     wget -qO softether-vpnserver.tar.gz "$DOWNLOAD_URL"
 
-    echo "=== 2. 正在解压文件 ==="
+    echo "=== 3. 正在解压文件 ==="
     tar -zxvf softether-vpnserver.tar.gz >/dev/null 2>&1
 
-    echo "=== 3. 正在移动到标准目录 (/usr/local/vpnserver) ==="
+    echo "=== 4. 正在移动到标准目录 (/usr/local/vpnserver) ==="
     mv vpnserver /usr/local/
     rm -f softether-vpnserver.tar.gz
 
-    echo "=== 4. 正在编译 SoftEther VPN ==="
+    echo "=== 5. 正在编译 SoftEther VPN ==="
     cd /usr/local/vpnserver
     # 通过重定向自动同意协议条款（输入 1 三次）
     make <<EOF >/dev/null 2>&1
@@ -75,12 +118,12 @@ do_install() {
 1
 EOF
 
-    echo "=== 5. 正在设置目录权限 ==="
+    echo "=== 6. 正在设置目录权限 ==="
     chmod 600 /usr/local/vpnserver/*
     chmod 755 /usr/local/vpnserver/vpnserver
     chmod 755 /usr/local/vpnserver/vpncmd
 
-    echo "=== 6. 正在创建 systemd 服务 ==="
+    echo "=== 7. 正在创建 systemd 服务 ==="
     cat <<EOF > /etc/systemd/system/vpnserver.service
 [Unit]
 Description=SoftEther VPN Server
@@ -97,7 +140,7 @@ WorkingDirectory=/usr/local/vpnserver
 WantedBy=multi-user.target
 EOF
 
-    echo "=== 7. 正在启动并配置开机自启 ==="
+    echo "=== 8. 正在启动并配置开机自启 ==="
     systemctl daemon-reload
     systemctl start vpnserver
     systemctl enable vpnserver >/dev/null 2>&1
